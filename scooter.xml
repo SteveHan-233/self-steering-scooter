@@ -1,0 +1,41 @@
+<mujoco>
+    <option gravity="0 0 -9.8">
+    </option>
+    <asset>
+        <material name="scooterBody" rgba=".3 .3 .3 1"/>
+        <material name="scooterWheel" rgba=".3 .3 .3 1"/>
+    </asset>
+    <worldbody>
+        <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
+        <geom type="plane" size="10 1 .1" rgba=".5 .25 0 1"/>
+        <body name="scooter" pos="0 0 .2" euler="0 0 0">
+            <camera name="third_person" mode="fixed" pos="-1 0 1" xyaxes="0 -1 0 0.707 0 0.707"/>
+            <joint type="free"/>
+            <geom type="box" size=".3 .1 .02" material="scooterBody"/>
+            <geom type="box" pos=".37 .08 0" size=".07 .02 .02" material="scooterBody"/>
+            <geom type="box" pos=".37 -.08 0" size=".07 .02 .02" material="scooterBody"/>
+            <body name="back_wheel" pos=".42 0 0">
+                <joint name="axle_back" frictionloss=".001" type="hinge" axis="0 -1 0" />
+                <geom type="ellipsoid" euler="90 0 0" friction="2 .005 .0001" size=".1 .1 .05" material="scooterWheel" mass=".49"/>
+            </body>
+            <body pos="-.41 0 0" name="steering_pole" euler="0 10 0">
+                <joint limited="true" frictionloss="0.1" damping="0.01" armature="0.0002" range="-30.58 30.58" name="steering_axle" type="hinge" axis="0 0 1" />
+                <geom pos="0 0 .22" type="cylinder" size=".03 .1"  /> 
+                <body name="balancing_pole">
+                    <geom pos="0 0 .63" type="cylinder" size=".03 .3" mass="1"  />
+                    <geom pos="0 0 0.88" type="cylinder" size=".02 .2" euler="90 0 0" /> 
+                    <joint name="balancing_axle" type="hinge" pos="0 0 .33" axis="1 0 0" frictionloss=".5" limited="true" range="-20 20" damping=".1" armature=".1" />
+                </body>
+                <body name="front_wheel" pos="0 0 0">
+                    <joint name="axle_front" type="hinge" axis="0 -1 0" frictionloss=".1" damping=".01" armature=".01" />
+                    <geom type="ellipsoid" euler="90 0 0" friction="2 .005 .0001" size=".1 .1 .05" material="scooterWheel" mass=".49"/>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+    <actuator>
+        <velocity gear=".34"  name="forwardMotor" joint="axle_front" kv="100"/>
+        <position name="steering_pos" kp="1.0" joint="steering_axle" />
+        <position name="balancing_pos" kp="5.0" joint="balancing_axle" />
+    </actuator>
+</mujoco>
