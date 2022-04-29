@@ -138,12 +138,12 @@ duration = 10
 framerate = 30
 
 class Sim(gym.Env):
-    def __init__(self, hertz, max_timestep=1000):
+    def __init__(self, hertz, max_timestep=2000):
         root = mjcf.from_xml_string(scooter_model)
 
         high = np.array([.1, np.finfo(np.float32).max, .5, .5, 1])
 
-        self.action_space = gym.spaces.Discrete(5)
+        self.action_space = gym.spaces.Box(low=np.array([-.5]), high=np.array([.5]))
         self.observation_space = gym.spaces.Box(low=-high, high=high)
 
         self.hertz = hertz
@@ -174,17 +174,17 @@ class Sim(gym.Env):
         return self.get_state()
     
     def step(self, action):
-        if (abs(self.get_steer_goal()) < .49):
-            steer = 0
-            if action == 0: 
-                steer = -.1
-            elif action == 1:
-                steer = -.01
-            elif action == 3:
-                steer = .01
-            elif action == 4:
-                steer = .1
-            self.physics.named.data.ctrl['steering_pos'] += steer
+        #if (abs(self.get_steer_goal()) < .49):
+            #steer = 0
+            #if action == 0: 
+                #steer = -.1
+            #elif action == 1:
+                #steer = -.01
+            #elif action == 3:
+                #steer = .01
+            #elif action == 4:
+                #steer = .1
+        self.physics.named.data.ctrl['steering_pos'] = action
         while True:
             self.physics.step()
             if self.timestep < self.physics.data.time * self.hertz:
