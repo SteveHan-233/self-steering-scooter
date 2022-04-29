@@ -8,9 +8,9 @@ env.reset()
 
 model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./PPO_balancing_tensorboard")
 env.render_episode(model, str(0), 10)
-for i in range(4):
-    model.learn(total_timesteps=18000, reset_num_timesteps=False)
-    env.render_episode(model, str(18000 * (i + 1)), 10)
+for i in range(5):
+    model.learn(total_timesteps=30000, reset_num_timesteps=False)
+    env.render_episode(model, str(30000 * (i + 1)), 10)
 
 model.save("saved")
 #model = PPO.load("saved", env=env)

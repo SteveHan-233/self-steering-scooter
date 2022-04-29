@@ -120,6 +120,9 @@ scooter_model="""
         <!-- <body> 
             <geom type="cylinder" pos="-2 0 -.8" size="1 3" euler="90 0 0" />
         </body> -->
+        <body>
+            <geom type="cylinder" pos="-100 0 1" size=".3 1"/>
+        </body>
     </worldbody>
     <actuator>
         <velocity gear=".34"  name="forwardMotor" joint="axle_front" kv="100"/>
@@ -135,16 +138,17 @@ duration = 10
 framerate = 30
 
 class Sim(gym.Env):
-    def __init__(self, hertz):
+    def __init__(self, hertz, max_timestep=1000):
         root = mjcf.from_xml_string(scooter_model)
 
-        high = np.array([.1, np.finfo(np.float32).max, .5, .5])
+        high = np.array([.1, np.finfo(np.float32).max, .5, .5, 1])
 
         self.action_space = gym.spaces.Discrete(5)
         self.observation_space = gym.spaces.Box(low=-high, high=high)
 
         self.hertz = hertz
         self.timestep = 0
+        self.max_timestep = max_timestep
 
         for i in range(5):
             root.worldbody.add('light', diffuse=[.5, .5, .5], pos=[i * -15, 0, 10], dir=[0, 0, -1])
@@ -160,10 +164,12 @@ class Sim(gym.Env):
         self.physics.reset()
         self.timestep = 0
         self.frames=[]
-        angle = np.random.uniform(-.1, .1)
-        self.physics.named.data.qpos['free_joint'][3:] = get_quaternion_from_euler(angle, 0, 0)
+        self.goal_pos = [-100, 0]
+        angle = np.random.uniform(0, 2 * math.pi)
+        #angle = 0
+        self.physics.named.data.qpos['free_joint'][3:] = get_quaternion_from_euler(0, 0, angle)
         self.physics.named.data.ctrl['forwardMotor'] = 20
-        self.physics.named.data.qvel['free_joint'] = [-5.8, 0, 0, 0, 0, 0]
+        self.physics.named.data.qvel['free_joint'] = [-5.8 * math.cos(angle), -5.8 * math.sin(angle), 0, 0, 0, 0]
         self.physics.step()
         return self.get_state()
     
@@ -171,27 +177,36 @@ class Sim(gym.Env):
         if (abs(self.get_steer_goal()) < .49):
             steer = 0
             if action == 0: 
-                steer = -.01
+                steer = -.1
             elif action == 1:
-                steer = -.005
+                steer = -.01
             elif action == 3:
-                steer = .005
-            elif action == 4:
                 steer = .01
+            elif action == 4:
+                steer = .1
             self.physics.named.data.ctrl['steering_pos'] += steer
         while True:
             self.physics.step()
             if self.timestep < self.physics.data.time * self.hertz:
                 self.timestep += 1
                 break
-        tilt_angle = self.get_tilt_angle()
         done = False
-        reward = 1
-        if abs(tilt_angle) > .5: 
+        state = self.get_state()
+        tilt_angle = state[0]
+        tilt_velocity = state[1]
+        goal_angle = state[4]
+        reward = -tilt_angle**2 - .1 * tilt_velocity **2 - 2 * goal_angle **2
+        if self.timestep > self.max_timestep: 
             done = True
-            reward = 0 
+        elif abs(tilt_angle) > .5: 
+            done = True
+            reward = reward * (self.max_timestep - self.timestep)
+        elif self.goal_reached():
+            done = True
+            reward = 3000
+            print("let's go")
         info = {}
-        return self.get_state(), reward, done, info
+        return state, reward, done, info
 
 
     def get_tilt_angle(self):
@@ -203,15 +218,15 @@ class Sim(gym.Env):
     def get_tilt_velocity(self):
         return self.physics.named.data.qvel["free_joint"][3]
     
-    def render_episode(self, model, render_name, max_time=999999):
+    def render_episode(self, model, render_name, max_time=10):
         obs = self.reset()
         done = False
         pixels = self.render_pixels()
         self.frames.append(pixels)
-        while not done and self.physics.data.time < max_time:
+        while self.physics.data.time < max_time:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = self.step(action)
-            print(action)
+            print(self.physics.named.data.xpos['front_wheel'][0])
             if len(self.frames) < self.physics.data.time * framerate:
                 pixels = self.render_pixels()
                 self.frames.append(pixels)
@@ -232,8 +247,25 @@ class Sim(gym.Env):
     def get_steer_goal(self):
         return self.physics.named.data.ctrl['steering_pos']
 
+    # gets the angle between the scooter's direction and the direction to the goal. 
+    def get_goal_angle(self):
+        scooter_backwheel_pos = self.physics.named.data.xpos['back_wheel'][:2]
+        scooter_frontwheel_pos = self.physics.named.data.xpos['front_wheel'][:2]
+        scooter_vector = scooter_frontwheel_pos - scooter_backwheel_pos
+        normalized_scooter_vector = scooter_vector / np.linalg.norm(scooter_vector)
+        goal_vector = self.goal_pos - scooter_frontwheel_pos
+        normalized_goal_vector = goal_vector / np.linalg.norm(goal_vector)
+        return np.arccos(np.dot(normalized_scooter_vector, normalized_goal_vector))
+
+    def goal_reached(self):
+        scooter_frontwheel_pos = self.physics.named.data.xpos['front_wheel'][:2]
+        if np.linalg.norm(self.goal_pos - scooter_frontwheel_pos) < 2:
+            return True
+        return False
+
+
     def get_state(self):
-        return np.array([self.get_tilt_angle(), self.get_tilt_velocity(), self.get_steer_angle(), self.get_steer_goal()], dtype=np.float32)
+        return np.array([self.get_tilt_angle(), self.get_tilt_velocity(), self.get_steer_angle(), self.get_steer_goal(), self.get_goal_angle()], dtype=np.float32)
         
     def simulate(self):
         self.reset()
@@ -242,6 +274,7 @@ class Sim(gym.Env):
             if len(self.frames) < self.physics.data.time * framerate:
                 pixels = self.physics.render(camera_id=0, scene_option=self.scene_option)
                 self.frames.append(pixels)
-                #print(self.get_steer_angle(), self.get_tilt_angle())
-                #print(self.get_steer_goal(), self.get_steer_angle())
-        display_video(self.frames, framerate)
+        display_video(self.frames, "test", framerate)
+
+#sim = Sim(30)
+#sim.simulate()
