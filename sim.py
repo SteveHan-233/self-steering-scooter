@@ -42,11 +42,7 @@ plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 # Inline video helper function
-if os.environ.get('COLAB_NOTEBOOK_TEST', False):
-  # We skip video generation during tests, as it is quite expensive.
-  display_video = lambda *args, **kwargs: None
-else:
-  def display_video(frames, framerate=30):
+def display_video(frames, render_name="render", framerate=30):
     height, width, _ = frames[0].shape
     dpi = 70
     orig_backend = matplotlib.get_backend()
@@ -64,7 +60,7 @@ else:
     anim = animation.FuncAnimation(fig=fig, func=update, frames=frames,
                                    interval=interval, blit=True, repeat=False)
     fig.show()
-    anim.save("test.gif")
+    anim.save(render_name + ".gif")
 
 def get_quaternion_from_euler(roll, pitch, yaw):
   """
@@ -118,6 +114,9 @@ scooter_model="""
                 </body>
             </body>
         </body>
+        <!-- <body> 
+            <geom type="cylinder" pos="-2 0 -.8" size="1 3" euler="90 0 0" />
+        </body> -->
     </worldbody>
     <actuator>
         <velocity gear=".34"  name="forwardMotor" joint="axle_front" kv="100"/>
@@ -200,7 +199,7 @@ class Sim(gym.Env):
     def get_tilt_velocity(self):
         return self.physics.named.data.qvel["free_joint"][3]
     
-    def render_episode(self, model, max_time=999999):
+    def render_episode(self, model, render_name, max_time=999999):
         obs = self.reset()
         done = False
         pixels = self.physics.render(camera_id=0, scene_option=self.scene_option)
@@ -212,7 +211,7 @@ class Sim(gym.Env):
             if len(self.frames) < self.physics.data.time * framerate:
                 pixels = self.physics.render(camera_id=0, scene_option=self.scene_option)
                 self.frames.append(pixels)
-        display_video(self.frames, framerate)
+        display_video(self.frames, render_name, framerate)
 
 
     def get_steer_angle(self):
@@ -236,4 +235,3 @@ class Sim(gym.Env):
         display_video(self.frames, framerate)
 
 sim = Sim(60)
-sim.simulate()
