@@ -6,13 +6,12 @@ env = Sim(60)
 
 env.reset()
 
-model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./test_tensorboard2")
-model.learn(total_timesteps=3000)
-env.render_episode(model, "3000", 10)
-model.learn(total_timesteps=3000)
-env.render_episode(model, "6000", 10)
+model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./PPO_balancing_tensorboard")
+for i in range(4):
+    model.learn(total_timesteps=23000, reset_num_timesteps=False)
+    env.render_episode(model, str(32000 * (i + 1)), 10)
 
-#model.save("saved")
+model.save("saved")
 #model = PPO.load("saved", env=env)
 
 #mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=100)
