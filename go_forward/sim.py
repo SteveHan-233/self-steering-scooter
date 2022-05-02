@@ -141,7 +141,7 @@ class Sim(gym.Env):
     def __init__(self, hertz, max_timestep=2000):
         root = mjcf.from_xml_string(scooter_model)
 
-        high = np.array([.1, np.finfo(np.float32).max, .5, .5, 1])
+        high = np.array([.1, np.finfo(np.float32).max, .5, 1])
 
         self.action_space = gym.spaces.Box(low=np.array([-.5]), high=np.array([.5]))
         self.observation_space = gym.spaces.Box(low=-high, high=high)
@@ -165,8 +165,8 @@ class Sim(gym.Env):
         self.timestep = 0
         self.frames=[]
         self.goal_pos = [-100, 0]
-        angle = np.random.uniform(0, 2 * math.pi)
-        #angle = 0
+        #angle = np.random.uniform(0, 2 * math.pi)
+        angle = 1.5
         self.physics.named.data.qpos['free_joint'][3:] = get_quaternion_from_euler(0, 0, angle)
         self.physics.named.data.ctrl['forwardMotor'] = 20
         self.physics.named.data.qvel['free_joint'] = [-5.8 * math.cos(angle), -5.8 * math.sin(angle), 0, 0, 0, 0]
@@ -194,8 +194,9 @@ class Sim(gym.Env):
         state = self.get_state()
         tilt_angle = state[0]
         tilt_velocity = state[1]
-        goal_angle = state[4]
+        goal_angle = state[3]
         reward = -tilt_angle**2 - .1 * tilt_velocity **2 - 2 * goal_angle **2
+        # print(tilt_angle, tilt_velocity, goal_angle)
         if self.timestep > self.max_timestep: 
             done = True
         elif abs(tilt_angle) > .5: 
@@ -223,10 +224,10 @@ class Sim(gym.Env):
         done = False
         pixels = self.render_pixels()
         self.frames.append(pixels)
-        while self.physics.data.time < max_time:
+        while self.physics.data.time < max_time and not done:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = self.step(action)
-            print(self.physics.named.data.xpos['front_wheel'][0])
+            print(obs, reward, done)
             if len(self.frames) < self.physics.data.time * framerate:
                 pixels = self.render_pixels()
                 self.frames.append(pixels)
@@ -255,7 +256,10 @@ class Sim(gym.Env):
         normalized_scooter_vector = scooter_vector / np.linalg.norm(scooter_vector)
         goal_vector = self.goal_pos - scooter_frontwheel_pos
         normalized_goal_vector = goal_vector / np.linalg.norm(goal_vector)
-        return np.arccos(np.dot(normalized_scooter_vector, normalized_goal_vector))
+        angle = np.arccos(np.dot(normalized_scooter_vector, normalized_goal_vector))
+        if (normalized_goal_vector[0] * normalized_scooter_vector[1] - normalized_goal_vector[1] * normalized_scooter_vector[0] < 0):
+            angle = -angle
+        return angle
 
     def goal_reached(self):
         scooter_frontwheel_pos = self.physics.named.data.xpos['front_wheel'][:2]
@@ -265,7 +269,7 @@ class Sim(gym.Env):
 
 
     def get_state(self):
-        return np.array([self.get_tilt_angle(), self.get_tilt_velocity(), self.get_steer_angle(), self.get_steer_goal(), self.get_goal_angle()], dtype=np.float32)
+        return np.array([self.get_tilt_angle(), self.get_tilt_velocity(), self.get_steer_angle(), self.get_goal_angle()], dtype=np.float32)
         
     def simulate(self):
         self.reset()
