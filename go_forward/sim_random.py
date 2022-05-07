@@ -22,6 +22,7 @@ import os
 import itertools
 import numpy as np
 import math
+import quaternion
 
 # Graphics-related
 import matplotlib
@@ -41,8 +42,10 @@ plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
+num_episodes = 200
+
 # Inline video helper function
-def display_video(frames, render_name="render", framerate=30, lines=[]):
+def display_video(frames, render_name="render", framerate=30, lines_to_draw=[]):
     height, width, _ = frames[0].shape
     dpi = 70
     orig_backend = matplotlib.get_backend()
@@ -54,11 +57,15 @@ def display_video(frames, render_name="render", framerate=30, lines=[]):
     ax.set_aspect('equal')
     ax.set_position([0, 0, 1, 1])
     im = ax.imshow(frames[0])
-    line, = ax.plot([], [], '-')
+    lines = []
+    for _ in range(num_episodes):
+        line, = ax.plot([], [], '-')
+        lines.append(line)
     def update(i):
-      im.set_data(frames[i])
-      line.set_data(lines[i][0], lines[i][1])
-      return im, line
+        im.set_data(frames[i])
+        for ep in range(len(lines_to_draw[i])):
+            lines[ep].set_data(lines_to_draw[i][ep][0], lines_to_draw[i][ep][1])
+        return [im] + lines
     interval = 1000/framerate
     anim = animation.FuncAnimation(fig=fig, func=update, frames=len(frames),
                                    interval=interval, blit=True, repeat=False)
@@ -102,9 +109,15 @@ scooter_model="""
         <material name="scooterWheel" rgba=".3 .3 .3 1"/>
     </asset>
     <worldbody>
-        <body name="camera" mocap="true" pos="-10 0 5" euler="0 -50 -90">
-            <camera name="top_view" mode="fixed" />
+        <body name="camera" mocap="true" pos="-20 0 0" euler="0 89 90">
+            <camera name="top_view" pos="0 0 30" />
         </body>
+        <!--<body pos="-20 0 40" euler="0 0 0">
+            <camera name="top_view" pos="0 0 30" />
+        </body>-->
+        <!--<body name="camera" mocap="true" pos="-10 0 5" euler="0 -50 -90">
+            <camera name="top_view" mode="fixed" />
+        </body>-->
         <!--<body name="camera" pos="-25 0 40" euler="0 0 0">
             <camera name="top_view" mode="fixed" />
         </body>-->
@@ -131,7 +144,7 @@ scooter_model="""
             </body>
         </body>
         <body>
-            <geom type="cylinder" pos="-50 0 1" size=".8 1" rgba="1 0.2 0.2 1"/>
+            <geom type="cylinder" pos="-50 0 1" size="1.1 1" rgba="1 0.2 0.2 1"/>
         </body>
         <!--
         <body> 
@@ -182,12 +195,14 @@ class Sim(gym.Env):
     def reset(self):
         self.physics.reset()
         self.timestep = 0
-        self.frames=[]
-        self.lines = []
+        #self.frames=[]
+        #self.lines = []
+        #self.past_pos = []
+        self.past_pos.append([])
         self.goal_pos = [-50, 0]
         self.done_next = False # to give reward after reaching goal
-        #angle = np.random.uniform(0, 2 * math.pi)
-        angle = -1.14
+        angle = np.random.uniform(0, 2 * math.pi)
+        #angle = -1.14
         self.physics.named.data.qpos['free_joint'][3:] = get_quaternion_from_euler(0, 0, angle)
         self.physics.named.data.ctrl['forwardMotor'] = 20
         self.physics.named.data.qvel['free_joint'] = [-5.8 * math.cos(angle), -5.8 * math.sin(angle), 0, 0, 0, 0]
@@ -221,6 +236,7 @@ class Sim(gym.Env):
         tilt_angle = state[0]
         tilt_velocity = state[1]
         goal_angle = state[4]
+        print(goal_angle)
         reward = -tilt_angle**2 - .1 * tilt_velocity **2 - 2 * goal_angle **2 + steer_reward
         if self.timestep > self.max_timestep or self.done_next: 
             done = True
@@ -232,6 +248,10 @@ class Sim(gym.Env):
             reward = 40000
             print("let's go")
         info = {}
+        #draw the path that the scooter has taken
+        pos_homo = np.ones(4, dtype=float)
+        pos_homo[:3] = self.physics.named.data.xpos['front_wheel'][:3]
+        self.past_pos[len(self.past_pos) - 1].append(pos_homo)
         return state, reward, done, info
 
 
@@ -244,37 +264,39 @@ class Sim(gym.Env):
     def get_tilt_velocity(self):
         return self.physics.named.data.qvel["free_joint"][3]
     
-    def render_episode(self, model, render_name, max_time=10):
-        obs = self.reset()
-        done = False
-        #pixels = self.render_pixels()
-        #self.frames.append(pixels)
-        while self.physics.data.time < max_time and not done:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, done, info = self.step(action)
-            #print(obs, reward, done)
-            if len(self.frames) < self.physics.data.time * framerate:
-                pixels = self.render_pixels()
-                self.frames.append(pixels)
-                #draw the path that the scooter has taken
-                pos_homo = np.ones(4, dtype=float)
-                pos_homo[:3] = self.physics.named.data.xpos['front_wheel'][:3]
-                self.past_pos.append(pos_homo)
-                camera = mujoco.Camera(self.physics, camera_id="top_view", height=1080, width=1920)
-                camera_matrix = camera.matrix
-                line = np.zeros([2, len(self.past_pos)], dtype=float)
-                t = len(self.frames)
-                self.physics.named.data.mocap_pos['camera'] = np.array([-10 - t * 15 /100, 0, 5 + t * 35/100])
-                self.physics.named.data.mocap_quat['camera'] = get_quaternion_from_euler(0, -50 + t * 50 /100, -90 + t * 90/100)
-                for i in range(len(self.past_pos)):
-                    xs, ys, s = camera_matrix @ self.past_pos[i]
-                    x = xs/s
-                    y = ys/s
-                    line[:,i] = np.array([x, y])
-                self.lines.append(line)
-        #print(self.lines)
-        display_video(self.frames, render_name, framerate, lines=self.lines)
-        self.reset()
+    def render_episode(self, model, render_name, max_time=10, num_episodes=1):
+        for i in range(num_episodes):
+            obs = self.reset()
+            done = False
+            #pixels = self.render_pixels()
+            #self.frames.append(pixels)
+            num_frames = 0
+            while self.physics.data.time < max_time and not done:
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, done, info = self.step(action)
+                #print(obs, reward, done)
+                if num_frames < self.physics.data.time * framerate / (10 * (i + 1)**.7):
+                    self.physics.named.data.mocap_pos['camera'] = np.array([-20, 0, min(len(self.frames)**1.6/30000 * 40, 25)])
+                    self.physics.named.data.mocap_quat['camera'] = quaternion.as_float_array(quaternion.slerp_evaluate(np.quaternion(.5, .5, .5, .5), np.quaternion(1, 0, 0, 0), min(len(self.frames)**1.3/1000, 1)))
+                    self.physics.step()
+                    pixels = self.render_pixels()
+                    self.frames.append(pixels)
+                    num_frames += 1
+                    camera = mujoco.Camera(self.physics, camera_id="top_view", height=1080, width=1920)
+                    camera_matrix = camera.matrix
+                    lines_to_draw = []
+                    for i in range(len(self.past_pos)):
+                        line = np.zeros([2, len(self.past_pos[i])], dtype=float)
+                        for j in range(len(self.past_pos[i])):
+                            xs, ys, s = camera_matrix @ self.past_pos[i][j]
+                            x = xs/s
+                            y = ys/s
+                            line[:,j] = np.array([x, y])
+                        lines_to_draw.append(line)
+                    self.lines.append(lines_to_draw)
+            #print(self.lines)
+        print(len(self.frames))
+        display_video(self.frames, render_name, framerate, lines_to_draw=self.lines)
 
     def render_pixels(self):
     #        return self.physics.render(camera_id=0, scene_option=self.scene_option)
@@ -306,7 +328,7 @@ class Sim(gym.Env):
 
     def goal_reached(self):
         scooter_frontwheel_pos = self.physics.named.data.xpos['front_wheel'][:2]
-        if np.linalg.norm(self.goal_pos - scooter_frontwheel_pos) < 3:
+        if np.linalg.norm(self.goal_pos - scooter_frontwheel_pos) < 4:
             return True
         return False
 

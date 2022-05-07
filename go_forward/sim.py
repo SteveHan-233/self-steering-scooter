@@ -164,7 +164,7 @@ class Sim(gym.Env):
         self.physics.reset()
         self.timestep = 0
         self.frames=[]
-        self.goal_pos = [-100, 0]
+        self.goal_pos = [-50, 0]
         #angle = np.random.uniform(0, 2 * math.pi)
         angle = 1.5
         self.physics.named.data.qpos['free_joint'][3:] = get_quaternion_from_euler(0, 0, angle)

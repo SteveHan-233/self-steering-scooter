@@ -86,7 +86,7 @@ scooter_model="""
     <option gravity="0 0 -9.8">
     </option>
     <visual>
-        <global />
+        <scale actuatorlength="1"/>
     </visual>
     <asset>
         <texture name="grid" type="2d" builtin="checker" rgb1=".1 .2 .3" 
@@ -122,7 +122,7 @@ scooter_model="""
         </body> -->
     </worldbody>
     <actuator>
-        <velocity gear=".34"  name="forwardMotor" joint="axle_front" kv="100"/>
+        <velocity gear=".34"  name="forwardMotor" joint="axle_front" kv="100" group="3"/>
         <position name="steering_pos" kp="50.0" joint="steering_axle" />
     </actuator>
     <sensor>
@@ -153,6 +153,7 @@ class Sim(gym.Env):
 
         self.scene_option = mujoco.wrapper.core.MjvOption()
         self.scene_option.flags[enums.mjtVisFlag.mjVIS_JOINT] = False
+        self.scene_option.flags[enums.mjtVisFlag.mjVIS_ACTUATOR] = False
 
         self.frames = []
     
